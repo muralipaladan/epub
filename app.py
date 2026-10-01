@@ -2,24 +2,49 @@ import tempfile
 import os
 import requests
 import streamlit as st
-import ebooklib
-from ebooklib import epub
-from bs4 import BeautifulSoup
 
-st.set_page_config(page_title="Cloud Book Finder & Reader", layout="wide")
+# Mobile-first Viewport Page Config
+st.set_page_config(
+    page_title="Cloud Book Reader",
+    page_icon="📚",
+    layout="wide",
+    initial_sidebar_state="collapsed",
+)
 
-st.title("📚 Cloud Novel Finder & Reader")
-st.subheader("Free Malayalam/English EPUB & PDF Search & Reader")
+# Custom Mobile CSS styling
+st.markdown(
+    """
+    <style>
+        /* Mobile responsive adjustments */
+        .block-container {
+            padding-top: 1rem !important;
+            padding-bottom: 0rem !important;
+            padding-left: 0.5rem !important;
+            padding-right: 0.5rem !important;
+        }
+        iframe {
+            border: none !important;
+            width: 100% !important;
+            border-radius: 8px;
+        }
+        @media (max-width: 768px) {
+            .stButton>button {
+                width: 100%;
+                margin-bottom: 5px;
+            }
+        }
+    </style>
+""",
+    unsafe_allow_html=True,
+)
+
+st.title("📚 Mobile Cloud Reader")
 
 # Sidebar - Search & Controls
 st.sidebar.header("Search & Navigation")
 query = st.sidebar.text_input("Enter Novel Name or Author:", "Malayalam")
-language_filter = st.sidebar.selectbox(
-    "Filter Language Preference", ["All", "Malayalam", "English"]
-)
 
-# Tabs for Search Index and Reading
-tab1, tab2 = st.tabs(["🔍 Book Index (Catalog)", "📖 Book Reader"])
+tab1, tab2 = st.tabs(["🔍 Book Index", "📖 Mobile Flip Reader"])
 
 
 def search_open_library(search_query):
@@ -30,7 +55,7 @@ def search_open_library(search_query):
     data = response.json()
     docs = data.get("docs", [])
     results = []
-    for doc in docs[:15]:  # Top 15 results
+    for doc in docs[:15]:
       title = doc.get("title", "Unknown Title")
       author = doc.get("author_name", ["Unknown Author"])[0]
       cover_i = doc.get("cover_i")
@@ -40,7 +65,6 @@ def search_open_library(search_query):
           else "https://via.placeholder.com/150x200?text=No+Cover"
       )
 
-      # Check available formats or Gutenberg / Archive ID
       gutenberg_id = doc.get("gutenberg_id", [None])[0]
       ia_id = doc.get("ia", [None])[0]
 
@@ -68,84 +92,154 @@ def search_open_library(search_query):
     return []
 
 
-# Initialize Session State
 if "selected_book" not in st.session_state:
   st.session_state.selected_book = None
 
+# Tab 1: Book Index / Catalog
 with tab1:
-  st.markdown("### 🔎 Available Novels Index")
+  st.markdown("### 🔎 Novel Search")
   if query:
     with st.spinner("Searching cloud library..."):
       books = search_open_library(query)
 
     if books:
-      cols = st.columns(3)
+      # Mobile grid optimization
+      cols = st.columns(2)
       for idx, book in enumerate(books):
-        col = cols[idx % 3]
+        col = cols[idx % 2]
         with col:
-          st.image(book["cover"], width=130)
+          st.image(book["cover"], use_container_width=True)
           st.markdown(f"**{book['title']}**")
-          st.caption(f"Author: {book['author']}")
+          st.caption(f"_{book['author']}_")
 
           if book["epub_url"] or book["pdf_url"]:
-            if st.button("Read Book", key=f"read_{idx}"):
+            if st.button("Read Now 📖", key=f"read_{idx}"):
               st.session_state.selected_book = book
-              st.success(
-                  f"'{book['title']}' selected! Go to 'Book Reader' tab."
-              )
+              st.success("Selected! Open 'Mobile Flip Reader' tab.")
           else:
-            st.info("Preview / Direct link unavailable")
+            st.info("No online reader available")
           st.divider()
     else:
-      st.warning("No downloadable books found for this query.")
+      st.warning("No downloadable books found.")
 
+# Tab 2: Mobile Viewport 3D Flip Reader
 with tab2:
-  st.markdown("### 📖 Novel Reader Zone")
   book = st.session_state.selected_book
 
   if book:
-    st.write(f"### Currently Reading: **{book['title']}**")
-    st.write(f"**Author:** {book['author']}")
+    st.caption(f"Reading: **{book['title']}** by {book['author']}")
 
-    # Read EPUB Format
-    if book["epub_url"]:
-      st.info("Loading EPUB Reader...")
-      try:
-        res = requests.get(book["epub_url"], timeout=15)
-        with tempfile.NamedTemporaryFile(
-            delete=False, suffix=".epub"
-        ) as tmp_file:
-          tmp_file.write(res.content)
-          tmp_path = tmp_file.name
+    # Interactive 3D Mobile Reader component (EPUB & PDF JavaScript Engine)
+    book_url = book["epub_url"] or book["pdf_url"]
+    is_epub = True if book["epub_url"] else False
 
-        epub_book = epub.read_epub(tmp_path)
-        chapters = []
-        for item in epub_book.get_items():
-          if item.get_type() == ebooklib.ITEM_DOCUMENT:
-            soup = BeautifulSoup(item.get_content(), "html.parser")
-            text = soup.get_text()
-            if len(text.strip()) > 100:
-              chapters.append(text)
+    # Mobile Full-Viewport HTML/JS Reader Engine
+    html_code = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+            <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.5/jszip.min.js"></script>
+            <script src="https://cdn.jsdelivr.net/npm/epubjs/dist/epub.min.js"></script>
+            <style>
+                body {{
+                    margin: 0;
+                    padding: 0;
+                    background-color: #f4f1ea;
+                    font-family: sans-serif;
+                    overflow: hidden;
+                }}
+                #reader-container {{
+                    width: 100vw;
+                    height: 80vh;
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                }}
+                #area {{
+                    width: 100%;
+                    height: 100%;
+                    box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+                    background: #fff;
+                }}
+                .controls {{
+                    position: fixed;
+                    bottom: 10px;
+                    left: 0;
+                    right: 0;
+                    display: flex;
+                    justify-content: space-around;
+                    padding: 8px 15px;
+                    background: rgba(255, 255, 255, 0.95);
+                    border-top: 1px solid #ddd;
+                    z-index: 100;
+                }}
+                .btn {{
+                    background: #2b580c;
+                    color: white;
+                    border: none;
+                    padding: 10px 20px;
+                    border-radius: 20px;
+                    font-weight: bold;
+                    font-size: 14px;
+                    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+                    cursor: pointer;
+                }}
+                .btn:active {{
+                    transform: scale(0.95);
+                }}
+            </style>
+        </head>
+        <body>
 
-        if chapters:
-          chapter_num = st.slider("Select Chapter", 1, len(chapters), 1)
-          st.markdown("---")
-          st.write(chapters[chapter_num - 1])
-        else:
-          st.warning("Could not parse EPUB chapters cleanly.")
+            <div id="reader-container">
+                <div id="area"></div>
+            </div>
 
-        os.remove(tmp_path)
-      except Exception as e:
-        st.error(f"Unable to render EPUB directly: {e}")
+            <div class="controls">
+                <button class="btn" onclick="prevPage()">◀ Prev</button>
+                <button class="btn" onclick="nextPage()">Next ▶</button>
+            </div>
 
-    # Read PDF Format
-    elif book["pdf_url"]:
-      st.info("Loading PDF Viewer...")
-      pdf_code = (
-          f'<iframe src="{book["pdf_url"]}" width="100%"'
-          ' height="700px"></iframe>'
-      )
-      st.components.v1.html(pdf_code, height=720)
+            <script>
+                var bookUrl = "{book_url}";
+                var isEpub = {str(is_epub).lower()};
+
+                if (isEpub) {{
+                    var book = ePub(bookUrl);
+                    var rendition = book.renderTo("area", {{
+                        width: "100%",
+                        height: "100%",
+                        transition: "transform 0.3s ease-in-out" // Soft flip transition
+                    }});
+
+                    rendition.display();
+
+                    function nextPage() {{ rendition.next(); }}
+                    function prevPage() {{ rendition.prev(); }}
+
+                    // Swipe gestures for Mobile
+                    var startX = 0;
+                    document.getElementById("area").addEventListener("touchstart", function(e) {{
+                        startX = e.touches[0].clientX;
+                    }});
+                    document.getElementById("area").addEventListener("touchend", function(e) {{
+                        var endX = e.changedTouches[0].clientX;
+                        if (startX - endX > 50) nextPage();
+                        if (endX - startX > 50) prevPage();
+                    }});
+                }} else {{
+                    // Fallback embedded Full Viewport Reader for PDF
+                    document.getElementById("area").innerHTML = 
+                        '<iframe src="' + bookUrl + '" width="100%" height="100%" style="border:none;"></iframe>';
+                }}
+            </script>
+        </body>
+        </html>
+        """
+
+    # Embed HTML Reader directly with responsive height
+    st.components.v1.html(html_code, height=700, scrolling=False)
 
   else:
-    st.info("Please select a book from the **Book Index** tab to start reading.")
+    st.info("Select a novel from the 'Book Index' tab first.")
