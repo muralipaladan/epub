@@ -15,7 +15,6 @@ st.set_page_config(
 st.markdown(
     """
     <style>
-        /* Mobile responsive adjustments */
         .block-container {
             padding-top: 1rem !important;
             padding-bottom: 0rem !important;
@@ -40,101 +39,142 @@ st.markdown(
 
 st.title("📚 Mobile Cloud Reader")
 
-# Sidebar - Search & Controls
-st.sidebar.header("Search & Navigation")
-query = st.sidebar.text_input("Enter Novel Name or Author:", "Malayalam")
+# Sidebar - Multi-Source Search & Controls
+st.sidebar.header("🔍 Search & Settings")
+query = st.sidebar.text_input("Enter Book Title, Author or Keyword:", "Malayalam Novel")
+search_engine = st.sidebar.radio("Select Search Source:", ["Google Books", "Open Library"])
 
-tab1, tab2 = st.tabs(["🔍 Book Index", "📖 Mobile Flip Reader"])
+tab1, tab2 = st.tabs(["🔍 Book Search Index", "📖 Mobile Flip Reader"])
+
+
+def search_google_books(search_query):
+    """Fetch free/preview books from Google Books API"""
+    url = f"https://www.googleapis.com/books/v1/volumes?q={search_query}&maxResults=15"
+    try:
+        response = requests.get(url, timeout=10)
+        data = response.json()
+        items = data.get("items", [])
+        results = []
+        for item in items:
+            volume_info = item.get("volumeInfo", {})
+            access_info = item.get("accessInfo", {})
+
+            title = volume_info.get("title", "Unknown Title")
+            authors = volume_info.get("authors", ["Unknown Author"])
+            author = ", ".join(authors)
+
+            image_links = volume_info.get("imageLinks", {})
+            cover_url = image_links.get("thumbnail") or image_links.get("smallThumbnail") or "https://via.placeholder.com/150x200?text=No+Cover"
+
+            epub_download = access_info.get("epub", {}).get("downloadLink")
+            pdf_download = access_info.get("pdf", {}).get("downloadLink")
+            web_reader_link = access_info.get("webReaderLink")
+
+            # Fallback EPUB/PDF URL logic
+            epub_url = epub_download if access_info.get("epub", {}).get("isAvailable") else None
+            pdf_url = pdf_download if access_info.get("pdf", {}).get("isAvailable") else web_reader_link
+
+            results.append({
+                "title": title,
+                "author": author,
+                "cover": cover_url,
+                "epub_url": epub_url,
+                "pdf_url": pdf_url,
+                "reader_link": web_reader_link
+            })
+        return results
+    except Exception as e:
+        st.error(f"Google Books search error: {e}")
+        return []
 
 
 def search_open_library(search_query):
-  """Fetch free books from Open Library API"""
-  url = f"https://openlibrary.org/search.json?q={search_query}"
-  try:
-    response = requests.get(url, timeout=10)
-    data = response.json()
-    docs = data.get("docs", [])
-    results = []
-    for doc in docs[:15]:
-      title = doc.get("title", "Unknown Title")
-      author = doc.get("author_name", ["Unknown Author"])[0]
-      cover_i = doc.get("cover_i")
-      cover_url = (
-          f"https://covers.openlibrary.org/b/id/{cover_i}-M.jpg"
-          if cover_i
-          else "https://via.placeholder.com/150x200?text=No+Cover"
-      )
+    """Fetch free books from Open Library API"""
+    url = f"https://openlibrary.org/search.json?q={search_query}"
+    try:
+        response = requests.get(url, timeout=10)
+        data = response.json()
+        docs = data.get("docs", [])
+        results = []
+        for doc in docs[:15]:
+            title = doc.get("title", "Unknown Title")
+            author = doc.get("author_name", ["Unknown Author"])[0]
+            cover_i = doc.get("cover_i")
+            cover_url = (
+                f"https://covers.openlibrary.org/b/id/{cover_i}-M.jpg"
+                if cover_i
+                else "https://via.placeholder.com/150x200?text=No+Cover"
+            )
 
-      gutenberg_id = doc.get("gutenberg_id", [None])[0]
-      ia_id = doc.get("ia", [None])[0]
+            gutenberg_id = doc.get("gutenberg_id", [None])[0]
+            ia_id = doc.get("ia", [None])[0]
 
-      epub_url = None
-      pdf_url = None
+            epub_url = None
+            pdf_url = None
 
-      if gutenberg_id:
-        epub_url = (
-            f"https://www.gutenberg.org/ebooks/{gutenberg_id}.epub.images"
-        )
-      elif ia_id:
-        pdf_url = f"https://archive.org/download/{ia_id}/{ia_id}.pdf"
-        epub_url = f"https://archive.org/download/{ia_id}/{ia_id}_epub.epub"
+            if gutenberg_id:
+                epub_url = f"https://www.gutenberg.org/ebooks/{gutenberg_id}.epub.images"
+            elif ia_id:
+                pdf_url = f"https://archive.org/download/{ia_id}/{ia_id}.pdf"
+                epub_url = f"https://archive.org/download/{ia_id}/{ia_id}_epub.epub"
 
-      results.append({
-          "title": title,
-          "author": author,
-          "cover": cover_url,
-          "epub_url": epub_url,
-          "pdf_url": pdf_url,
-      })
-    return results
-  except Exception as e:
-    st.error(f"Error fetching books: {e}")
-    return []
+            results.append({
+                "title": title,
+                "author": author,
+                "cover": cover_url,
+                "epub_url": epub_url,
+                "pdf_url": pdf_url,
+                "reader_link": pdf_url or epub_url
+            })
+        return results
+    except Exception as e:
+        st.error(f"Open Library search error: {e}")
+        return []
 
 
 if "selected_book" not in st.session_state:
-  st.session_state.selected_book = None
+    st.session_state.selected_book = None
 
-# Tab 1: Book Index / Catalog
+# Tab 1: Book Search Index
 with tab1:
-  st.markdown("### 🔎 Novel Search")
-  if query:
-    with st.spinner("Searching cloud library..."):
-      books = search_open_library(query)
+    st.markdown(f"### 🔎 Search Results from **{search_engine}**")
+    if query:
+        with st.spinner("Searching internet/cloud library..."):
+            if search_engine == "Google Books":
+                books = search_google_books(query)
+            else:
+                books = search_open_library(query)
 
-    if books:
-      # Mobile grid optimization
-      cols = st.columns(2)
-      for idx, book in enumerate(books):
-        col = cols[idx % 2]
-        with col:
-          st.image(book["cover"], use_container_width=True)
-          st.markdown(f"**{book['title']}**")
-          st.caption(f"_{book['author']}_")
+        if books:
+            cols = st.columns(2)
+            for idx, book in enumerate(books):
+                col = cols[idx % 2]
+                with col:
+                    st.image(book["cover"], use_container_width=True)
+                    st.markdown(f"**{book['title']}**")
+                    st.caption(f"_{book['author']}_")
 
-          if book["epub_url"] or book["pdf_url"]:
-            if st.button("Read Now 📖", key=f"read_{idx}"):
-              st.session_state.selected_book = book
-              st.success("Selected! Open 'Mobile Flip Reader' tab.")
-          else:
-            st.info("No online reader available")
-          st.divider()
-    else:
-      st.warning("No downloadable books found.")
+                    if book["epub_url"] or book["pdf_url"] or book["reader_link"]:
+                        if st.button("Read Now 📖", key=f"read_{idx}"):
+                            st.session_state.selected_book = book
+                            st.success("Selected! Open 'Mobile Flip Reader' tab.")
+                    else:
+                        st.info("No online view available")
+                    st.divider()
+        else:
+            st.warning("No downloadable books found for this query.")
 
-# Tab 2: Mobile Viewport 3D Flip Reader
+# Tab 2: Mobile 3D Flip Reader Mode
 with tab2:
-  book = st.session_state.selected_book
+    book = st.session_state.selected_book
 
-  if book:
-    st.caption(f"Reading: **{book['title']}** by {book['author']}")
+    if book:
+        st.caption(f"Reading: **{book['title']}** by {book['author']}")
 
-    # Interactive 3D Mobile Reader component (EPUB & PDF JavaScript Engine)
-    book_url = book["epub_url"] or book["pdf_url"]
-    is_epub = True if book["epub_url"] else False
+        book_url = book["epub_url"] or book["pdf_url"] or book["reader_link"]
+        is_epub = True if book["epub_url"] else False
 
-    # Mobile Full-Viewport HTML/JS Reader Engine
-    html_code = f"""
+        html_code = f"""
         <!DOCTYPE html>
         <html>
         <head>
@@ -182,16 +222,11 @@ with tab2:
                     border-radius: 20px;
                     font-weight: bold;
                     font-size: 14px;
-                    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
                     cursor: pointer;
-                }}
-                .btn:active {{
-                    transform: scale(0.95);
                 }}
             </style>
         </head>
         <body>
-
             <div id="reader-container">
                 <div id="area"></div>
             </div>
@@ -210,15 +245,13 @@ with tab2:
                     var rendition = book.renderTo("area", {{
                         width: "100%",
                         height: "100%",
-                        transition: "transform 0.3s ease-in-out" // Soft flip transition
+                        transition: "transform 0.3s ease-in-out"
                     }});
-
                     rendition.display();
 
                     function nextPage() {{ rendition.next(); }}
                     function prevPage() {{ rendition.prev(); }}
 
-                    // Swipe gestures for Mobile
                     var startX = 0;
                     document.getElementById("area").addEventListener("touchstart", function(e) {{
                         startX = e.touches[0].clientX;
@@ -229,7 +262,6 @@ with tab2:
                         if (endX - startX > 50) prevPage();
                     }});
                 }} else {{
-                    // Fallback embedded Full Viewport Reader for PDF
                     document.getElementById("area").innerHTML = 
                         '<iframe src="' + bookUrl + '" width="100%" height="100%" style="border:none;"></iframe>';
                 }}
@@ -238,8 +270,6 @@ with tab2:
         </html>
         """
 
-    # Embed HTML Reader directly with responsive height
-    st.components.v1.html(html_code, height=700, scrolling=False)
-
-  else:
-    st.info("Select a novel from the 'Book Index' tab first.")
+        st.components.v1.html(html_code, height=700, scrolling=False)
+    else:
+        st.info("Select a book from the 'Book Search Index' tab first.")
